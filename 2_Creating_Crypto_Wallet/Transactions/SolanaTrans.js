@@ -1,36 +1,75 @@
-import { ethers } from "ethers";
+import {
+  Connection,
+  Keypair,
+  Transaction,
+  SystemProgram,
+  LAMPORTS_PER_SOL,
+  PublicKey,
+} from "@solana/web3.js";
+import bs58 from "bs58";
 
-async function sendTransactionWithProvider(privateKey, to, amount) {
-  // Create provider using GetBlock
-  const provider = new ethers.JsonRpcProvider(
-    `https://go.getblock.us/81990708e37a492c89af1f1b7a82cb9a`
+async function sendSolanaTransactionRaw(privateKey, to, amount) {
+  const connection = new Connection(
+    `https://go.getblock.us/bbcb5a2482ba4a86a3d1e633fcdb36fe`
   );
 
-  // Create wallet connected to provider
-  const wallet = new ethers.Wallet(privateKey, provider);
+  const fromKeypair = Keypair.fromSecretKey(bs58.decode(privateKey));
+  const toPublicKey = new PublicKey(to);
 
   try {
-    // Send transaction (ethers handles nonce, gas price, gas Limit, sign etc.)
-    const tx = await wallet.sendTransaction({
-      to: to,
-      value: ethers.parseEther(amount),
+    // Get recent blockhash
+    const latestBlockhash = await connection.getLatestBlockhash();
+
+    // Create transaction
+    const transaction = new Transaction();
+    transaction.recentBlockhash = latestBlockhash.blockhash;
+    transaction.feePayer = fromKeypair.publicKey;
+
+    // Add the transfer instruction
+    transaction.add(
+      SystemProgram.transfer({
+        fromPubkey: fromKeypair.publicKey,
+        toPubkey: toPublicKey,
+        lamports: amount * LAMPORTS_PER_SOL,
+      })
+    );
+
+    // Sign the transaction
+    transaction.sign(fromKeypair);
+
+    // Send raw transaction
+    const signature = await connection.sendRawTransaction(
+      transaction.serialize(),
+      {
+        skipPreflight: false,
+        preflightCommitment: "confirmed",
+      }
+    );
+
+    console.log("Transaction sent:", signature);
+
+    // Confirm transaction
+    const confirmation = await connection.confirmTransaction({
+      signature,
+      blockhash: latestBlockhash.blockhash,
+      lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
     });
 
-    console.log("Transaction sent:", tx.hash);
+    if (confirmation.value.err) {
+      throw new Error(`Transaction failed: ${confirmation.value.err}`);
+    }
 
-    // Wait for confirmation
-    const receipt = await tx.wait();
-    console.log("Transaction confirmed in block:", receipt.blockNumber);
+    console.log("Transaction confirmed:", confirmation);
 
-    return tx.hash;
+    return signature;
   } catch (error) {
     console.error("Transaction failed:", error);
     throw error;
   }
 }
 
-sendTransactionWithProvider(
-  "0xe13e0a935240c2ac98f19ac0299ee41a1841ca6860a99c858ea55a69107ac61a",
-  "0xC81cAe7D1cf6FCe3E3ac0B2d41E871D149ab777A",
-  "0.000000177125054145"
+sendSolanaTransactionRaw(
+  "62Nxioza63NMNTVKBHbLbKRqtwqu96JpU7XnX31dnAK2F2TuFfuyNxtaCynsbHqouCoU6ku1asdtRBbiCFN74QvL",
+  "APz7hnkedimxjWMLMfP42epujhoHWWDGMyGV4ghYXdjc",
+  0.001
 );
