@@ -25,6 +25,5 @@ constract VendingMachine{
     function withdrawBalance() public{
         require(msg.sender == owner,"You are not the Owner");
         payable (owner).transfer(address(this).balance);
-
     }
 }
